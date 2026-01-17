@@ -1,6 +1,11 @@
 cmake_minimum_required(VERSION 3.31)
 project(ALLO)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
-add_executable(ALLO main.cpp)
+file(GLOB_RECURSE ALLO_SRC
+    Allo/*.h
+    Allo/*.cpp
+)
+
+add_executable(ALLO main.cpp ${ALLO_SRC})
