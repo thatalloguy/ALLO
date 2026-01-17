@@ -1,1 +1,9 @@
-print "Hello, World";
+/*
+this
+is
+a
+code
+block
+*/
+
+print "Hello, World!";

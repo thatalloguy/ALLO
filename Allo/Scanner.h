@@ -28,6 +28,7 @@ private:
     char advance();
     bool match(char excepted);
     char peek() const;
+    char prev() const;
     char peekNext() const;
 
     void string();
@@ -39,7 +40,7 @@ private:
     static bool isAlpheNumeric(char c);
 
 
-    bool isAtEnd() const { return current >= source.length(); }
+    [[nodiscard]] bool isAtEnd() const { return current >= source.length(); }
 };
 
 

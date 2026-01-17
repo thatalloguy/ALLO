@@ -56,9 +56,12 @@ void Scanner::scanToken() {
         case '>': addToken(match('=') ? GREATER_EQUAL : GREATER); break;
         case '/':
             if (match('/')) {
-                // A comment goes until the end of the line.
                 while (peek() != '\n' && !isAtEnd()) advance();
-            } else {
+            } else if (match('*')) {
+                while (peek() != '*' && peekNext() != '/' && !isAtEnd()) advance();
+                // advance for both the '*' & '/'
+                current += 2;
+            }else {
                 addToken(SLASH);
             }
             break;
@@ -80,7 +83,7 @@ void Scanner::scanToken() {
         default:
             if (isDigit(c)) number();
             else if (isAlpha(c)) identifier();
-            else Interpreter::error(line, "Unexpected character."); break;
+            else Interpreter::error(line, "Unexpected character. " + c ); break;
     }
 }
 
@@ -89,11 +92,13 @@ void Scanner::addToken(TokenType type) {
 }
 
 void Scanner::addToken(TokenType type, std::any literal) {
-    std::string text = source.substr(start, current);
+    std::string text = source.substr(start, current - start);
     tokens.emplace_back(type, text, std::move(literal), line);
 }
 
 char Scanner::advance() {
+    if (source[current] == '\n') line++;
+
     return source[current++];
 }
 
@@ -129,7 +134,7 @@ void Scanner::string() {
 
     advance();
 
-    std::string value = source.substr(start + 1, current - 1);
+    std::string value = source.substr(start + 1, current - start);
     addToken(STRING, value);
 }
 
@@ -145,12 +150,12 @@ void Scanner::number() {
     }
 
     addToken(NUMBER,
-        std::stod(source.substr(start, current)));
+        std::stod(source.substr(start, current - start)));
 }
 
 void Scanner::identifier() {
     while (isAlpheNumeric(peek())) advance();
-    std::string text = source.substr(start, current);
+    std::string text = source.substr(start, current - start);
     auto it = keywords.find(text);
     TokenType type = IDENTIFIER;
 
