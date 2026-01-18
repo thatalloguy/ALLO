@@ -5,4 +5,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define OUT_OF_MEMORY_CODE 1
+
 #endif
