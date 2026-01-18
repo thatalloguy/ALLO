@@ -31,12 +31,12 @@ static std::string TokenTypetoString(TokenType type);
 
 class Token {
 public:
+    Token() = default;
     Token(TokenType type, const std::string& lexeme, std::any literal, int line);
 
     std::string toString();
 
 
-private:
     TokenType type{IDENTIFIER};
     std::string lexeme{};
     std::any literal{nullptr};
