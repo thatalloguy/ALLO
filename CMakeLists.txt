@@ -3,4 +3,9 @@ project(AlloLanguage C)
 
 set(CMAKE_C_STANDARD 11)
 
-add_executable(AlloLanguage main.c)
+file(GLOB_RECURSE ALLO_SRC
+        Allo/*.h
+        Allo/*.c
+)
+
+add_executable(AlloLanguage main.c ${ALLO_SRC})
