@@ -23,11 +23,17 @@ InterpretResult interpret(Chunk* chunk) {
 InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define BINARY_OPERATOR(op)         \
+        do {                        \
+            double a = pop_stack(); \
+            double b = pop_stack(); \
+            push_to_stack(a op b);   \
+        } while (false)
+
+
 
     for (;;) {
-
 #ifdef ALLO_DEBUG_TRACE_EXECUTION
-
         printf("        ");
         for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
             printf("[ ");
@@ -45,6 +51,17 @@ InterpretResult run() {
                 print_value(pop_stack());
                 printf("\n");
                 return INTERPRET_OK;
+
+                //---- Binary operators
+            case OP_NEGATE:
+                push_to_stack(-pop_stack());
+                break;
+            case OP_ADD:        BINARY_OPERATOR(+); break;
+            case OP_SUBTRACT:   BINARY_OPERATOR(-); break;
+            case OP_MULTIPLY:   BINARY_OPERATOR(*); break;
+            case OP_DIVIDE:     BINARY_OPERATOR(/); break;
+
+                //----
             case OP_CONSTANT:
                 Value constant = READ_CONSTANT();
                 push_to_stack(constant);
@@ -54,6 +71,7 @@ InterpretResult run() {
         }
     }
 
+#undef BINARY_OPERATOR
 #undef READ_BYTE
 #undef READ_CONSTANT
 }
