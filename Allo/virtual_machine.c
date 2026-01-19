@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "debug.h"
-
+#include "compiler.h"
 VM vm;
 
 void init_vm() {
@@ -20,9 +20,29 @@ InterpretResult interpret(Chunk* chunk) {
     return run();
 }
 
+InterpretResult interpret(const char *source) {
+    Chunk chunk;
+    init_chunk(&chunk);
+
+    if (!compile(source, &chunk)) {
+        free_chunk(&chunk);
+        return INTERPRET_COMPILE_ERROR;
+    }
+
+    vm.chunk = &chunk;
+    vm.ip = vm.chunk->code;
+
+    InterpretResult result = run();
+
+    free_chunk(&chunk);
+
+    return result;
+}
+
 InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
+#define NEGATE(ptr) (*(ptr-1) = -*(ptr-1))
 #define BINARY_OPERATOR(op)         \
         do {                        \
             double a = pop_stack(); \
@@ -54,7 +74,7 @@ InterpretResult run() {
 
                 //---- Binary operators
             case OP_NEGATE:
-                push_to_stack(-pop_stack());
+                NEGATE(vm.stackTop);
                 break;
             case OP_ADD:        BINARY_OPERATOR(+); break;
             case OP_SUBTRACT:   BINARY_OPERATOR(-); break;

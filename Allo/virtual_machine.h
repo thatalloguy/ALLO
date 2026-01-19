@@ -25,6 +25,8 @@ void init_vm();
 void free_vm();
 
 InterpretResult interpret(Chunk* chunk);
+InterpretResult interpret(const char* source);
+
 InterpretResult run();
 
 void reset_stack();
