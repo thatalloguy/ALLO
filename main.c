@@ -1,7 +1,11 @@
+
+
 #include "Allo/chunk.h"
-#include "Allo/debug.h"
+#include "Allo/virtual_machine.h"
 
 int main(void) {
+    init_vm();
+
 
     Chunk chunk;
     init_chunk(&chunk);
@@ -13,10 +17,13 @@ int main(void) {
 
     write_chunk(&chunk, OP_RETURN, 123);
 
-    disassemble_chunk(&chunk, "test chunk");
+   // disassemble_chunk(&chunk, "test chunk");
+    interpret(&chunk);
 
 
+    free_vm();
     free_chunk(&chunk);
+
 
     return 0;
 }

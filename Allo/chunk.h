@@ -11,6 +11,7 @@ typedef enum {
 
 typedef struct {
     uint8_t* code;
+    //todo optimize this.
     int* lines;
     ValueArray constants;
     int count;

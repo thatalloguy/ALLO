@@ -6,6 +6,8 @@ typedef double Value;
 typedef struct {
     int capacity;
     int count;
+    //note this can only hold up to 256 bytes.
+    //todo implement OP_CONSTANT_LONG
     Value* values;
 } ValueArray;
 
