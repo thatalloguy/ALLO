@@ -7,7 +7,7 @@
 VM vm;
 
 void init_vm() {
-
+    reset_stack();
 }
 
 void free_vm() {
@@ -27,17 +27,27 @@ InterpretResult run() {
     for (;;) {
 
 #ifdef ALLO_DEBUG_TRACE_EXECUTION
+
+        printf("        ");
+        for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
+            printf("[ ");
+            print_value(*slot);
+            printf(" ]");
+        }
+        printf("\n");
+
         disassemble_instruction(vm.chunk, (int)(vm.ip - vm.chunk->code));
 #endif
 
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
             case OP_RETURN:
+                print_value(pop_stack());
+                printf("\n");
                 return INTERPRET_OK;
             case OP_CONSTANT:
                 Value constant = READ_CONSTANT();
-                print_value(constant);
-                printf("\n");
+                push_to_stack(constant);
                 break;
             default:
                 return INTERPRET_COMPILE_ERROR;
@@ -46,4 +56,25 @@ InterpretResult run() {
 
 #undef READ_BYTE
 #undef READ_CONSTANT
+}
+
+void reset_stack() {
+    vm.stackTop = vm.stack;
+}
+
+void push_to_stack(Value value) {
+    *vm.stackTop = value;
+    vm.stackTop++;
+
+
+    //todo implement  proper  stack overflow warnings / errors;
+    if (vm.stackTop - vm.stack >= STACK_MAX) {
+        printf("[WARNING] STACK IS OVERFLOWING\n");
+    }
+}
+
+
+Value pop_stack() {
+    vm.stackTop--;
+    return *vm.stackTop;
 }
