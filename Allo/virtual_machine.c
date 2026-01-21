@@ -1,5 +1,6 @@
 #include "virtual_machine.h"
 
+#include <stdarg.h>
 #include <stdio.h>
 
 #include "debug.h"
@@ -13,6 +14,27 @@ void init_vm() {
 void free_vm() {
 }
 
+static Value peek(int distance) {
+    return vm.stackTop[-1 - distance];
+}
+
+static bool is_falsey(Value value) {
+    return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
+}
+
+static void runtime_error(const char* format, ...) {
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fputs("\n", stderr);
+
+
+    size_t instruction = vm.ip - vm.chunk->code - 1;
+    int line = vm.chunk->lines[instruction];
+    fprintf(stderr, "[line %d] in script\n", line);
+    reset_stack();
+}
 
 InterpretResult interpret_chunk(Chunk* chunk) {
     vm.chunk = chunk;
@@ -42,13 +64,18 @@ InterpretResult interpret_code(const char *source) {
 InterpretResult run() {
 #define READ_BYTE() (*vm.ip++)
 #define READ_CONSTANT() (vm.chunk->constants.values[READ_BYTE()])
-#define NEGATE(ptr) (*(ptr-1) = -*(ptr-1))
-#define BINARY_OPERATOR(op)         \
-        do {                        \
-            double a = pop_stack(); \
-            double b = pop_stack(); \
-            push_to_stack(a op b);   \
-        } while (false)
+#define NEGATE(ptr) (*(ptr-1) = NUMBER_VAL(-AS_NUMBER(*(ptr-1))))
+#define BINARY_OP(valueType, op)                            \
+    do {                                                    \
+      if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {     \
+        runtime_error("Operands must be numbers.");          \
+        return INTERPRET_RUNTIME_ERROR;                     \
+      }                                                     \
+      double b = AS_NUMBER(pop_stack());                          \
+      double a = AS_NUMBER(pop_stack());                          \
+      push_to_stack(valueType(a op b));                              \
+    } while (false)
+
 
 
 
@@ -74,13 +101,43 @@ InterpretResult run() {
 
                 //---- Binary operators
             case OP_NEGATE:
+                if (!IS_NUMBER(peek(0))) {
+                    runtime_error("Operand must be a number.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
                 NEGATE(vm.stackTop);
                 break;
-            case OP_ADD:        BINARY_OPERATOR(+); break;
-            case OP_SUBTRACT:   BINARY_OPERATOR(-); break;
-            case OP_MULTIPLY:   BINARY_OPERATOR(*); break;
-            case OP_DIVIDE:     BINARY_OPERATOR(/); break;
 
+
+            case OP_NIL: push_to_stack(NIL_VAL); break;
+            case OP_TRUE: push_to_stack(BOOL_VAL(true)); break;
+            case OP_FALSE: push_to_stack(BOOL_VAL(false)); break;
+
+            case OP_ADD:        BINARY_OP(NUMBER_VAL, +); break;
+            case OP_SUBTRACT:   BINARY_OP(NUMBER_VAL, -); break;
+            case OP_MULTIPLY:   BINARY_OP(NUMBER_VAL, *); break;
+            case OP_DIVIDE:     BINARY_OP(NUMBER_VAL, /); break;
+
+            case OP_NOT: push_to_stack(BOOL_VAL(is_falsey(pop_stack()))); break;
+            case OP_EQUAL: {
+                Value b = pop_stack();
+                Value a = pop_stack();
+                push_to_stack(BOOL_VAL(values_equal(a, b)));
+                break;
+            }
+            case OP_NOT_EQUAL: {
+                Value b = pop_stack();
+                Value a = pop_stack();
+                push_to_stack(BOOL_VAL(!values_equal(a, b)));
+                break;
+            }
+
+
+            case OP_GREATER: BINARY_OP(BOOL_VAL, >); break;
+            case OP_GREATER_EQUAL: BINARY_OP(BOOL_VAL, >=); break;
+
+            case OP_LESS: BINARY_OP(BOOL_VAL, <); break;
+            case OP_LESS_EQUAL: BINARY_OP(BOOL_VAL, <=); break;
                 //----
             case OP_CONSTANT:
                 Value constant = READ_CONSTANT();

@@ -36,6 +36,30 @@ int disassemble_instruction(Chunk* chunk, int offset) {
         case OP_DIVIDE:
             return simple_instruction("OP_DIVIDE", offset);
 
+        case OP_NIL:
+            return simple_instruction("OP_NIL", offset);
+        case OP_FALSE:
+            return simple_instruction("OP_FALSE", offset);
+        case OP_TRUE:
+            return simple_instruction("OP_TRUE", offset);
+
+        case OP_NOT:
+            return simple_instruction("OP_NOT", offset);
+
+        case OP_EQUAL:
+            return simple_instruction("OP_EQUAL", offset);
+        case OP_GREATER:
+            return simple_instruction("OP_GREATER", offset);
+        case OP_LESS:
+            return simple_instruction("OP_LESS", offset);
+
+        case OP_NOT_EQUAL:
+            return simple_instruction("OP_NOT_EQUAL", offset);
+        case OP_GREATER_EQUAL:
+            return simple_instruction("OP_GREATER_EQUAL", offset);
+        case OP_LESS_EQUAL:
+            return simple_instruction("OP_LESS_EQUAL", offset);
+
         case OP_CONSTANT:
             return constant_instruction("OP_CONSTANT", chunk, offset);
         default:
@@ -53,9 +77,6 @@ int constant_instruction(const char* name, Chunk* chunk, int offset) {
     return offset + 2;
 }
 
-void print_value(Value value) {
-    printf("%g", value);
-}
 int simple_instruction(const char* name, int offset) {
     printf("%s\n", name);
     return offset + 1;

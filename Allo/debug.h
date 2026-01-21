@@ -10,7 +10,6 @@ int disassemble_instruction(Chunk* chunk, int offset);
 
 int simple_instruction(const char* name, int offset);
 int constant_instruction(const char* name, Chunk* chunk, int offset);
-void print_value(Value value);
 
 
 
