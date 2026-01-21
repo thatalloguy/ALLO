@@ -195,7 +195,7 @@ TokenType check_keyword(int start, int length, const char *rest, TokenType type)
 }
 
 Token make_token(TokenType type) {
-    Token token{};
+    Token token;
     token.type = type;
     token.start = scanner.start;
     token.length = (int)(scanner.current - scanner.start);
@@ -204,7 +204,7 @@ Token make_token(TokenType type) {
 }
 
 Token error_token(const char *message) {
-    Token token{};
+    Token token;
     token.type = TOKEN_ERROR;
     token.start = message;
     token.length = (int)(strlen(message));

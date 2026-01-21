@@ -40,13 +40,13 @@ void repl() {
             break;
         }
 
-        interpret(line);
+        interpret_code(line);
     }
 }
 
 void run_file(const char* path) {
     char* source = read_file(path);
-    InterpretResult result = interpret(source);
+    InterpretResult result = interpret_code(source);
     free(source);
 
     if (result == INTERPRET_RUNTIME_ERROR) exit(RUNTIME_ERROR);
