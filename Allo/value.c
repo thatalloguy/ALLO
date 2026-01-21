@@ -13,12 +13,7 @@ bool values_equal(Value a, Value b) {
         case VAL_BOOL:   return AS_BOOL(a) == AS_BOOL(b);
         case VAL_NIL:    return true;
         case VAL_NUMBER: return AS_NUMBER(a) == AS_NUMBER(b);
-        case VAL_OBJ: {
-            ObjString* aStr = AS_STRING(a);
-            ObjString* bStr = AS_STRING(b);
-            return aStr->length == bStr->length &&
-                memcpy(aStr->chars, bStr->chars, aStr->length) == 0;
-        }
+        case VAL_OBJ:    return AS_OBJ(a) == AS_OBJ(b);
         default:         return false;
     }
 }
