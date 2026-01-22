@@ -6,6 +6,8 @@
 #include "debug.h"
 #endif
 
+#include <string.h>
+
 #include "object.h"
 #include "scanner.h"
 
@@ -30,27 +32,38 @@ typedef enum {
     PREC_PRIMARY
   } Precedence;
 
-typedef void (*ParseFn)();
+typedef void (*ParseFn)(bool canAssign);
 typedef struct {
     ParseFn prefix;
     ParseFn infix;
     Precedence precedence;
 } ParseRule;
 
+typedef struct {
+    Token name;
+    int depth;
+} Local;
 
-static void grouping();
-static void unary();
-static void number();
-static void binary();
-static void literal();
-static void string();
-static void variable();
+typedef struct {
+    Local locals[UINT8_COUNT];
+    int localCount;
+    int scopeDepth;
+} Compiler;
+
+static void grouping(bool canAssign);
+static void unary(bool canAssign);
+static void number(bool canAssign);
+static void binary(bool canAssign);
+static void literal(bool canAssign);
+static void string(bool canAssign);
+static void variable(bool canAssign);
 
 static void declaration();
 static void var_declaration();
 static void statement();
 
-ParseRule rules[] = {
+ParseRule rules[] =
+    {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
   [TOKEN_RIGHT_PAREN]   = {NULL,     NULL,   PREC_NONE},
   [TOKEN_LEFT_BRACE]    = {NULL,     NULL,   PREC_NONE},
@@ -95,6 +108,13 @@ ParseRule rules[] = {
 
 Parser parser;
 Chunk* compilingChunk;
+Compiler* current = NULL;
+
+static void init_compiler(Compiler* compiler) {
+    compiler->localCount = 0;
+    compiler->scopeDepth = 0;
+    current = compiler;
+}
 
 static Chunk* current_chunk() {
     return compilingChunk;
@@ -182,11 +202,13 @@ static void parse_precedence(Precedence precedence) {
         return;
     }
 
-    prefix_rule();
+    bool canAssign = precedence <= PREC_ASSIGNMENT;
+
+    prefix_rule(canAssign);
     while (precedence <= get_rule(parser.current.type)->precedence) {
         advance_compiler();
         ParseFn infix_rule = get_rule(parser.previous.type)->infix;
-        infix_rule();
+        infix_rule(canAssign);
     }
 }
 
@@ -194,13 +216,74 @@ static uint8_t identifier_constant(Token* name) {
     return make_constant(OBJ_VAL(copy_string(name->start, name->length)));
 }
 
+static bool identifiers_equal(Token* a, Token* b) {
+    if (a->length != b->length) return false;
+    return memcmp(a->start, b->start, a->length) == 0;
+}
+
+static int resolve_local(Compiler* compiler, Token* name) {
+    for (int i = compiler->localCount-1; i>= 0; i--) {
+        Local* local = &compiler->locals[i];
+        if (identifiers_equal(name, &local->name)) {
+            if (local->depth == -1) {
+                error("Can't read local variable in its own initializer.");
+            }
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void add_local(Token name) {
+    if (current->localCount == UINT8_COUNT) {
+        error("Too many local variables in function. Only 256 allowed");
+        return;
+    }
+
+    Local* local = &current->locals[current->localCount++];
+    local->name = name;
+    local->depth = -1;
+    // local->depth = current->scopeDepth;
+
+}
+
+static void declare_variable() {
+    if (current->scopeDepth == 0) return;
+
+    Token* name = &parser.previous;
+
+    for (int i = current->localCount - 1; i >= 0; i--) {
+        Local* local = &current->locals[i];
+        if (local->depth != -1 && local->depth < current->scopeDepth) {
+            break;
+        }
+
+        if (identifiers_equal(name, &local->name)) {
+            error("Already a variable with this name in this scope.");
+        }
+    }
+
+    add_local(*name);
+}
+
 static uint8_t parse_variable(const char* errorMessage) {
-        consume(TOKEN_IDENTIFIER, errorMessage);
+    consume(TOKEN_IDENTIFIER, errorMessage);
+
+    declare_variable();
+    if (current->scopeDepth > 0) return 0;
 
     return identifier_constant(&parser.previous);
 }
 
+static void mark_initialized() {
+    current->locals[current->localCount - 1].depth = current->scopeDepth;
+}
 static void define_variable(uint8_t global) {
+    if (current->scopeDepth > 0) {
+        mark_initialized();
+        return;
+    }
+
     emit_bytes(OP_DEFINE_GLOBAL, global);
 }
 
@@ -212,6 +295,28 @@ static void expression_statement() {
     consume(TOKEN_SEMICOLON, "Excepted ';' after expression");
     emit_byte(OP_POP);
 }
+
+static void begin_scope() {
+    current->scopeDepth++;
+}
+
+static void end_scope() {
+    current->scopeDepth--;
+
+    while (current->localCount > 0 && current->locals[current->localCount - 1].depth > current->scopeDepth) {
+        emit_byte(OP_POP);
+        current->localCount--;
+    }
+
+}
+
+static void block() {
+    while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+        declaration();
+    }
+    consume(TOKEN_RIGHT_BRACE, "Excepted '}' after block.");
+}
+
 static void synchronize() {
     parser.panicMode = false;
 
@@ -271,6 +376,10 @@ static void print_statement() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         print_statement();
+    } else if (match(TOKEN_LEFT_BRACE)) {
+        begin_scope();
+        block();
+        end_scope();
     } else {
         expression_statement();
     }
@@ -278,17 +387,17 @@ static void statement() {
 
 
 
-static void number() {
+static void number(bool canAssign) {
     double value = strtod(parser.previous.start, NULL);
     emit_constant(NUMBER_VAL(value));
 }
 
-static void grouping() {
+static void grouping(bool canAssign) {
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression");
 }
 
-static void unary() {
+static void unary(bool canAssign) {
     TokenType opType = parser.previous.type;
 
     parse_precedence(PREC_UNARY);
@@ -299,7 +408,7 @@ static void unary() {
     }
 }
 
-static void binary() {
+static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule* rule = get_rule(operatorType);
     parse_precedence((Precedence)(rule->precedence + 1));
@@ -321,7 +430,7 @@ static void binary() {
     }
 }
 
-static void literal() {
+static void literal(bool canAssign) {
     switch (parser.previous.type) {
         case TOKEN_FALSE: emit_byte(OP_FALSE); break;
         case TOKEN_TRUE: emit_byte(OP_TRUE); break;
@@ -330,18 +439,35 @@ static void literal() {
     }
 }
 
-static void string() {
+static void string(bool canAssign) {
     emit_constant(OBJ_VAL(copy_string(parser.previous.start + 1,
                     parser.previous.length - 2)));
 }
 
-static void named_variable(Token name) {
-    uint8_t arg = identifier_constant(&name);
-    emit_bytes(OP_GET_GLOBAL, arg);
+static void named_variable(Token name, bool canAssign) {
+    uint8_t getOp, setOp;
+    int arg = resolve_local(current, &name);
+    if (arg != -1) {
+        getOp = OP_GET_LOCAL;
+        setOp = OP_SET_LOCAL;
+    } else {
+        arg = identifier_constant(&name);
+        getOp = OP_GET_GLOBAL;
+        setOp = OP_SET_GLOBAL;
+    }
+
+
+
+    if (canAssign && match(TOKEN_EQUAL)) {
+        expression();
+        emit_bytes(setOp, (uint8_t)arg);
+    } else {
+        emit_bytes(getOp, (uint8_t)arg);
+    }
 }
 
-static void variable() {
-    named_variable(parser.previous);
+static void variable( bool canAssign) {
+    named_variable(parser.previous, canAssign);
 }
 
 
@@ -357,6 +483,9 @@ static void end_compiler() {
 
 bool compile(const char *source, Chunk *chunk) {
     init_scanner(source);
+
+    Compiler compiler;
+    init_compiler(&compiler);
 
     parser.hadError = false;
     parser.panicMode = false;

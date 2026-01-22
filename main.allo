@@ -1,4 +1,9 @@
 var hello = "hello";
-var space = " ";
-var world = "world!";
-print hello + space + world;
+{
+    var a = "world";
+
+
+    print a;
+}
+
+print hello;
