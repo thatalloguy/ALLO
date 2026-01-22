@@ -23,7 +23,7 @@ char* read_file(const char* path) {
     VALIDATE_FILE_OP(buffer != NULL, "Not enough memory to read \"%s\" \n", path);
 
     size_t bytesRead = fread(buffer, sizeof(char), fileSize, file);
-    VALIDATE_FILE_OP(bytesRead < fileSize, "Could not read file \"%s\" \n", path);
+    VALIDATE_FILE_OP(bytesRead == fileSize, "Could not read file \"%s\" \n", path);
     buffer[bytesRead] = '\0';
 
     fclose(file);

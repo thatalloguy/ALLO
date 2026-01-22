@@ -25,6 +25,9 @@ typedef enum {
     OP_LESS_EQUAL,
     OP_NOT,
 
+    //statements
+    OP_PRINT,
+
     OP_RETURN,
 } OpCode;
 

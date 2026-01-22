@@ -44,6 +44,8 @@ static void number();
 static void binary();
 static void literal();
 static void string();
+static void declaration();
+static void statement();
 
 ParseRule rules[] = {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
@@ -93,6 +95,16 @@ Chunk* compilingChunk;
 
 static Chunk* current_chunk() {
     return compilingChunk;
+}
+
+static bool check(TokenType type) {
+    return parser.current.type == type;
+}
+
+static bool match(TokenType type) {
+    if (!check(type)) return false;
+    advance_compiler();
+    return true;
 }
 
 static void error_at(Token* token, const char* message) {
@@ -175,11 +187,27 @@ static void parse_precedence(Precedence precedence) {
     }
 }
 
-
-
 static void expression() {
     parse_precedence(PREC_ASSIGNMENT);
 }
+
+static void declaration() {
+    statement();
+}
+
+static void print_statement() {
+    expression();
+    consume(TOKEN_SEMICOLON, "Except ';' after value");
+    emit_byte(OP_PRINT);
+}
+
+static void statement() {
+    if (match(TOKEN_PRINT)) {
+        print_statement();
+    }
+}
+
+
 
 static void number() {
     double value = strtod(parser.previous.start, NULL);
@@ -260,27 +288,14 @@ bool compile(const char *source, Chunk *chunk) {
     compilingChunk = chunk;
 
     advance_compiler();
-    expression();
-    consume(TOKEN_EOF, "Excepted end of expression");
+
+    while (!match(TOKEN_EOF)) {
+        statement();
+    }
 
     end_compiler();
     return !parser.hadError;
-    int line = -1;
-    for (;;) {
-        Token token = scan_token();
-        if (token.line != line) {
-            printf("%4d ", token.line);
-            line = token.line;
-        } else {
-            printf("    | ");
-        }
 
-        printf("%2d '%.*s'\n ", token.type, token.length, token.start);
-
-        if (token.type == TOKEN_EOF) break;
-    }
-
-    return true;
 }
 
 void advance_compiler() {

@@ -117,8 +117,6 @@ InterpretResult run() {
         uint8_t instruction;
         switch (instruction = READ_BYTE()) {
             case OP_RETURN:
-                print_value(pop_stack());
-                printf("\n");
                 return INTERPRET_OK;
 
                 //---- Binary operators
@@ -176,6 +174,12 @@ InterpretResult run() {
             case OP_CONSTANT:
                 Value constant = READ_CONSTANT();
                 push_to_stack(constant);
+                break;
+
+                //---
+            case OP_PRINT:
+                print_value(pop_stack());
+                printf("\n");
                 break;
             default:
                 return INTERPRET_COMPILE_ERROR;

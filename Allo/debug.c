@@ -62,6 +62,10 @@ int disassemble_instruction(Chunk* chunk, int offset) {
 
         case OP_CONSTANT:
             return constant_instruction("OP_CONSTANT", chunk, offset);
+
+        case OP_PRINT:
+            return simple_instruction("OP_PRINT", offset);
+
         default:
             printf("unknown opcode %d\n", instruction);
             return offset + 1;
