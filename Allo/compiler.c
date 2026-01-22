@@ -44,7 +44,10 @@ static void number();
 static void binary();
 static void literal();
 static void string();
+static void variable();
+
 static void declaration();
+static void var_declaration();
 static void statement();
 
 ParseRule rules[] = {
@@ -67,7 +70,7 @@ ParseRule rules[] = {
   [TOKEN_GREATER_EQUAL] = {NULL,     binary,   PREC_COMPARISON},
   [TOKEN_LESS]          = {NULL,     binary,   PREC_COMPARISON},
   [TOKEN_LESS_EQUAL]    = {NULL,     binary,   PREC_COMPARISON},
-  [TOKEN_IDENTIFIER]    = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_IDENTIFIER]    = {variable,     NULL,   PREC_NONE},
   [TOKEN_STRING]        = {string,     NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
   [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
@@ -187,12 +190,76 @@ static void parse_precedence(Precedence precedence) {
     }
 }
 
+static uint8_t identifier_constant(Token* name) {
+    return make_constant(OBJ_VAL(copy_string(name->start, name->length)));
+}
+
+static uint8_t parse_variable(const char* errorMessage) {
+        consume(TOKEN_IDENTIFIER, errorMessage);
+
+    return identifier_constant(&parser.previous);
+}
+
+static void define_variable(uint8_t global) {
+    emit_bytes(OP_DEFINE_GLOBAL, global);
+}
+
 static void expression() {
     parse_precedence(PREC_ASSIGNMENT);
 }
+static void expression_statement() {
+    expression();
+    consume(TOKEN_SEMICOLON, "Excepted ';' after expression");
+    emit_byte(OP_POP);
+}
+static void synchronize() {
+    parser.panicMode = false;
+
+    while (parser.current.type != TOKEN_EOF) {
+        if (parser.previous.type == TOKEN_SEMICOLON) return;
+        switch (parser.current.type) {
+            case TOKEN_CLASS:
+            case TOKEN_FUN:
+            case TOKEN_VAR:
+            case TOKEN_FOR:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_PRINT:
+            case TOKEN_RETURN:
+                return;
+
+            default:
+                ; // Do nothing.
+        }
+
+        advance_compiler();
+    }
+}
 
 static void declaration() {
-    statement();
+
+    if (match(TOKEN_VAR)) {
+        var_declaration();
+    } else {
+        statement();
+    }
+
+    if (parser.panicMode) synchronize();
+}
+
+
+static void var_declaration() {
+    uint8_t global = parse_variable("Expect variable name");
+
+    if (match(TOKEN_EQUAL)) {
+        expression();
+    } else {
+        emit_byte(OP_NIL);
+    }
+
+    consume(TOKEN_SEMICOLON, "Expect ';' after variable declaration");
+
+    define_variable(global);
 }
 
 static void print_statement() {
@@ -204,6 +271,8 @@ static void print_statement() {
 static void statement() {
     if (match(TOKEN_PRINT)) {
         print_statement();
+    } else {
+        expression_statement();
     }
 }
 
@@ -266,7 +335,14 @@ static void string() {
                     parser.previous.length - 2)));
 }
 
+static void named_variable(Token name) {
+    uint8_t arg = identifier_constant(&name);
+    emit_bytes(OP_GET_GLOBAL, arg);
+}
 
+static void variable() {
+    named_variable(parser.previous);
+}
 
 
 static void end_compiler() {
@@ -290,7 +366,7 @@ bool compile(const char *source, Chunk *chunk) {
     advance_compiler();
 
     while (!match(TOKEN_EOF)) {
-        statement();
+        declaration();
     }
 
     end_compiler();
