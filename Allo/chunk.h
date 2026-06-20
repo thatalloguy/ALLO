@@ -25,7 +25,6 @@ typedef enum {
     OP_LESS_EQUAL,
     OP_NOT,
 
-    OP_PRINT,
     OP_POP,
     OP_DEFINE_GLOBAL,
     OP_GET_GLOBAL,
@@ -33,7 +32,10 @@ typedef enum {
     OP_GET_LOCAL,
     OP_SET_LOCAL,
 
-
+    OP_PRINT,
+    OP_JUMP_IF_FALSE,
+    OP_JUMP,
+    OP_LOOP,
     OP_RETURN,
 } OpCode;
 

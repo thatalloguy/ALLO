@@ -62,6 +62,9 @@ static void declaration();
 static void var_declaration();
 static void statement();
 
+static void and_(bool canAssign);
+static void or_(bool canAssign);
+
 ParseRule rules[] =
     {
   [TOKEN_LEFT_PAREN]    = {grouping, NULL,   PREC_NONE},
@@ -86,7 +89,7 @@ ParseRule rules[] =
   [TOKEN_IDENTIFIER]    = {variable,     NULL,   PREC_NONE},
   [TOKEN_STRING]        = {string,     NULL,   PREC_NONE},
   [TOKEN_NUMBER]        = {number,   NULL,   PREC_NONE},
-  [TOKEN_AND]           = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_AND]           = {NULL,     and_,   PREC_AND},
   [TOKEN_CLASS]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_ELSE]          = {NULL,     NULL,   PREC_NONE},
   [TOKEN_FALSE]         = {literal,     NULL,   PREC_NONE},
@@ -94,7 +97,7 @@ ParseRule rules[] =
   [TOKEN_FUN]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_IF]            = {NULL,     NULL,   PREC_NONE},
   [TOKEN_NIL]           = {literal,     NULL,   PREC_NONE},
-  [TOKEN_OR]            = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_OR]            = {NULL,     or_,   PREC_OR},
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
   [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
@@ -175,6 +178,26 @@ static void emit_bytes(uint8_t byte1, uint8_t byte2) {
     emit_byte(byte2);
 }
 
+static void emit_loop(int loopStart) {
+    emit_byte(OP_LOOP);
+
+    int offset = current_chunk()->count - loopStart + 2;
+    if (offset > UINT16_MAX) error("Loop body too large");
+
+    emit_byte((offset >> 8) & 0xff);
+    emit_byte(offset & 0xff);
+}
+
+static int emit_jump(uint8_t instruction) {
+    emit_byte(instruction);
+    //we emit some placeholder offset, that later will be replaced with the actual offsets, but we dont know it at this time.
+    emit_byte(0xff); // offset 1
+    emit_byte(0xff); // offset 2
+    //We use 2 offset so that we 16bits for the offset, that should be plenty.
+
+    return current_chunk()->count - 2;
+}
+
 static uint8_t make_constant(Value value) {
     int constant = add_constant(current_chunk(), value);
     if (constant > UINT8_MAX) {
@@ -188,6 +211,20 @@ static uint8_t make_constant(Value value) {
 
 static void emit_constant(Value value) {
     emit_bytes(OP_CONSTANT, make_constant(value));
+}
+
+static void patch_jump(int offset) {
+    //2 = the 2 bytes for the offset.
+    int jump = current_chunk()->count - offset - 2;
+
+    if (jump > UINT16_MAX) { //UINT16_MAX is the max of offset we can have.
+        error("Too much code to jump over");
+    }
+
+    current_chunk()->code[offset]       = (jump >> 8) & 0xff;
+    current_chunk()->code[offset + 1]   = jump & 0xff;
+
+
 }
 
 static ParseRule* get_rule(TokenType type) {
@@ -287,6 +324,15 @@ static void define_variable(uint8_t global) {
     emit_bytes(OP_DEFINE_GLOBAL, global);
 }
 
+static void and_(bool canAssign) {
+    int endJump = emit_jump(OP_JUMP_IF_FALSE);
+
+    emit_byte(OP_POP);
+    parse_precedence(PREC_AND);
+
+    patch_jump(endJump);
+}
+
 static void expression() {
     parse_precedence(PREC_ASSIGNMENT);
 }
@@ -294,6 +340,25 @@ static void expression_statement() {
     expression();
     consume(TOKEN_SEMICOLON, "Excepted ';' after expression");
     emit_byte(OP_POP);
+}
+
+static void if_statement() {
+    consume(TOKEN_LEFT_PAREN, "Expected '(' after 'if'.");
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expected ')' after condition.");
+
+    int thenJump = emit_jump(OP_JUMP_IF_FALSE);
+    emit_byte(OP_POP);
+    statement();
+
+    int elseJump = emit_jump(OP_JUMP);
+
+    patch_jump(thenJump);
+    emit_byte(OP_POP);
+
+
+    if (match(TOKEN_ELSE)) statement();
+    patch_jump(elseJump);
 }
 
 static void begin_scope() {
@@ -373,10 +438,31 @@ static void print_statement() {
     emit_byte(OP_PRINT);
 }
 
+static void while_statement() {
+    int loopStart = current_chunk()->count;
+
+    consume(TOKEN_LEFT_PAREN, "Expected '(' after 'if'.");
+    expression();
+    consume(TOKEN_RIGHT_PAREN, "Expected ')' after condition.");
+
+    int exit_jump = emit_jump(OP_JUMP_IF_FALSE);
+    emit_byte(OP_POP);
+    statement();
+    emit_loop(loopStart);
+
+    patch_jump(exit_jump);
+    emit_byte(OP_POP);
+
+}
+
 static void statement() {
     if (match(TOKEN_PRINT)) {
         print_statement();
-    } else if (match(TOKEN_LEFT_BRACE)) {
+    } else if (match(TOKEN_IF)) {
+        if_statement();
+    } else if (match(TOKEN_WHILE)) {
+        while_statement();
+    }else if (match(TOKEN_LEFT_BRACE)) {
         begin_scope();
         block();
         end_scope();
@@ -391,6 +477,18 @@ static void number(bool canAssign) {
     double value = strtod(parser.previous.start, NULL);
     emit_constant(NUMBER_VAL(value));
 }
+
+static void or_(bool canAssign) {
+    int elseJump = emit_jump(OP_JUMP_IF_FALSE);
+    int end_jump = emit_jump(OP_JUMP);
+
+    patch_jump(elseJump);
+    emit_byte(OP_POP);
+
+    parse_precedence(PREC_OR);
+    patch_jump(end_jump);
+}
+
 
 static void grouping(bool canAssign) {
     expression();

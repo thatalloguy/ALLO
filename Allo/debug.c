@@ -16,6 +16,13 @@ static int byte_instruction(const char* name, Chunk* chunk,
     return offset + 2;
 }
 
+static int jump_instruction(const char* name, int sign, Chunk* chunk, int offset) {
+    uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
+    printf("%-16s %4d -> %d", name, offset, offset + 3 + sign * jump);
+
+    return offset + 3;
+}
+
 int disassemble_instruction(Chunk* chunk, int offset) {
     printf("%04d ", offset);
 
@@ -84,6 +91,14 @@ int disassemble_instruction(Chunk* chunk, int offset) {
             return byte_instruction("OP_GET_LOCAL", chunk, offset);
         case OP_SET_LOCAL:
             return byte_instruction("OP_SET_LOCAL", chunk, offset);
+
+        case OP_JUMP:
+            return jump_instruction("OP_JUMP", 1, chunk, offset);
+        case OP_JUMP_IF_FALSE:
+            return jump_instruction("OP_JUMP_IF_FALSE", 1, chunk, offset);
+
+        case OP_LOOP:
+            return jump_instruction("OP_LOOP", -1, chunk, offset);
         default:
             printf("unknown opcode %d\n", instruction);
             return offset + 1;

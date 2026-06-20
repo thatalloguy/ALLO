@@ -7,3 +7,18 @@ var hello = "hello";
 }
 
 print hello;
+
+var condition = false;
+if (condition) {
+    print("Condition was true");
+}
+else {
+    print("Condition was false");
+}
+
+var integer = 0;
+while (integer < 10) {
+    print("increasing integer: ");
+    print(integer);
+    integer = integer + 1;
+}
