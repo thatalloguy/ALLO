@@ -41,8 +41,11 @@ extern VM vm;
 void init_vm();
 void free_vm();
 
-InterpretResult interpret_chunk(Chunk* chunk);
 InterpretResult interpret_code(const char* source);
+
+void define_native(const char* name, NativeFn function);
+
+
 
 InterpretResult run();
 

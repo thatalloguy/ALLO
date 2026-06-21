@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "debug.h"
 #include "compiler.h"
@@ -10,11 +11,18 @@
 #include "object.h"
 VM vm;
 
+
+static Value clockNative(int argCount, Value* args) {
+    return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
+
 void init_vm() {
     reset_stack();
     vm.objects = NULL;
     init_table(&vm.strings);
     init_table(&vm.globals);
+
+    define_native("clock", clockNative);
 }
 
 void free_vm() {
@@ -97,6 +105,14 @@ static bool call_value(Value callee, int argCount) {
         switch OBJ_TYPE(callee) {
             case OBJ_FUNCTION:
                 return call(AS_FUNCTION(callee), argCount);
+            case OBJ_NATIVE: {
+                NativeFn native = AS_NATIVE(callee);
+                Value result = native(argCount, vm.stackTop - argCount);
+                push_to_stack(result);
+
+                return true;
+            }
+
             default:
                 break;
         }
@@ -105,6 +121,14 @@ static bool call_value(Value callee, int argCount) {
     runtime_error("Can only call functions and classes");
 
     return false;
+}
+
+void define_native(const char* name, NativeFn function) {
+    push_to_stack(OBJ_VAL(copy_string(name, (int)strlen(name))));
+    push_to_stack(OBJ_VAL(new_native(function)));
+    table_set(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
+    pop_stack();
+    pop_stack();
 }
 
 InterpretResult interpret_code(const char *source) {
