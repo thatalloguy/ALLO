@@ -182,7 +182,7 @@ TokenType identifier_type() {
             return TOKEN_IDENTIFIER;
     }
 
-    // return TOKEN_IDENTIFIER;
+    return TOKEN_IDENTIFIER;
 }
 
 TokenType check_keyword(int start, int length, const char *rest, TokenType type) {

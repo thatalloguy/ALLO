@@ -1,8 +1,10 @@
 #ifndef allo_compiler_h
 #define allo_compiler_h
 #include <stdbool.h>
+
+#include "object.h"
 #include "virtual_machine.h"
 
-bool compile(const char* source, Chunk* chunk);
+ObjFunction* compile(const char* source);
 void advance_compiler();
 #endif
