@@ -35,6 +35,18 @@ static void free_object(Obj* obj) {
             FREE(ObjFunction, obj);
             break;
         }
+        case OBJ_CLOSURE: {
+            ObjClosure* closure = (ObjClosure*)obj;
+            FREE_ARRAY(ObjUpvalue*, closure->upvalues, closure->upvalueCount);
+            FREE(ObjClosure, obj);
+            break;
+        }
+
+        case OBJ_UPVALUE: {
+            FREE(ObjUpvalue, obj);
+            break;
+        }
+
         case OBJ_NATIVE: {
             FREE(ObjNative, obj);
             break;

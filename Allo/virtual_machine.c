@@ -19,6 +19,7 @@ static Value clockNative(int argCount, Value* args) {
 void init_vm() {
     reset_stack();
     vm.objects = NULL;
+    vm.openUpvalues = NULL;
     init_table(&vm.strings);
     init_table(&vm.globals);
 
@@ -65,9 +66,9 @@ static void runtime_error(const char* format, ...) {
 
     for (int i=vm.frameCount - 1; i >= 0; i--) {
         CallFrame* frame = &vm.frames[i];
-        ObjFunction* function = frame->function;
+        ObjFunction* function = frame->closure->function;
         size_t instruction = frame->ip - function->chunk.code - 1;
-        int line = frame->function->chunk.lines[instruction];
+        int line = frame->closure->function->chunk.lines[instruction];
 
         fprintf(stderr, "[line %d] in script\n", line);
 
@@ -81,7 +82,9 @@ static void runtime_error(const char* format, ...) {
 
     reset_stack();
 }
-static bool call(ObjFunction* function, int argCount) {
+static bool call(ObjClosure* closure, int argCount) {
+    ObjFunction* function = closure->function;
+
     if (argCount != function->arity) {
         runtime_error("Excepted %d arguments but got %d", function->arity, argCount);
         return false;
@@ -93,7 +96,7 @@ static bool call(ObjFunction* function, int argCount) {
     }
 
     CallFrame* frame = &vm.frames[vm.frameCount++];
-    frame->function = function;
+    frame->closure = closure;
     frame->ip = function->chunk.code;
     frame->slots = vm.stackTop - argCount - 1;
     return true;
@@ -103,8 +106,8 @@ static bool call(ObjFunction* function, int argCount) {
 static bool call_value(Value callee, int argCount) {
     if (IS_OBJ(callee)) {
         switch OBJ_TYPE(callee) {
-            case OBJ_FUNCTION:
-                return call(AS_FUNCTION(callee), argCount);
+            // case OBJ_FUNCTION:
+            //     return call(AS_FUNCTION(callee), argCount);
             case OBJ_NATIVE: {
                 NativeFn native = AS_NATIVE(callee);
                 Value result = native(argCount, vm.stackTop - argCount);
@@ -112,7 +115,9 @@ static bool call_value(Value callee, int argCount) {
 
                 return true;
             }
-
+            case OBJ_CLOSURE: {
+                return call(AS_CLOSURE(callee), argCount);
+            }
             default:
                 break;
         }
@@ -121,6 +126,40 @@ static bool call_value(Value callee, int argCount) {
     runtime_error("Can only call functions and classes");
 
     return false;
+}
+
+static ObjUpvalue* capture_upvalue(Value* local) {
+
+    ObjUpvalue* prevUpvalue = NULL;
+    ObjUpvalue* upvalue = vm.openUpvalues;
+    while (upvalue != NULL && upvalue->location > local) {
+        prevUpvalue = upvalue;
+        upvalue = upvalue->next;
+    }
+
+    if (upvalue != NULL && upvalue->location == local) {
+        return upvalue;
+    }
+
+    ObjUpvalue* createdUpvalue = new_upvalue(local);
+    createdUpvalue->next = upvalue;
+
+    if (prevUpvalue == NULL) {
+        vm.openUpvalues = createdUpvalue;
+    } else {
+        prevUpvalue->next = createdUpvalue;
+    }
+    return createdUpvalue;
+}
+
+
+static void close_upvalues(Value* last) {
+    while (vm.openUpvalues != NULL && vm.openUpvalues->location >= last) {
+        ObjUpvalue* upvalue = vm.openUpvalues;
+        upvalue->closed = *upvalue->location;
+        upvalue->location = &upvalue->closed;
+        vm.openUpvalues = upvalue->next;
+    }
 }
 
 void define_native(const char* name, NativeFn function) {
@@ -136,10 +175,10 @@ InterpretResult interpret_code(const char *source) {
     if (function == NULL) return INTERPRET_COMPILE_ERROR;
 
     push_to_stack(OBJ_VAL(function));
-    CallFrame* frame = &vm.frames[vm.frameCount++];
-    frame->function = function;
-    frame->ip = function->chunk.code;
-    frame->slots = vm.stack;
+    ObjClosure* closure = new_closure(function);
+    pop_stack();
+    push_to_stack(OBJ_VAL(closure));
+    call(closure, 0);
 
     return run();
 }
@@ -149,7 +188,7 @@ InterpretResult run() {
 
 #define READ_BYTE() (*frame->ip++)
 
-#define READ_CONSTANT() (frame->function->chunk.constants.values[READ_BYTE()])
+#define READ_CONSTANT() (frame->closure->function->chunk.constants.values[READ_BYTE()])
 
 #define READ_STRING() \
     AS_STRING(READ_CONSTANT())
@@ -184,7 +223,7 @@ InterpretResult run() {
         }
         printf("\n");
 
-        disassemble_instruction(&frame->function->chunk,
+        disassemble_instruction(&frame->closure->function->chunk,
             (int)(frame->ip - frame->function->chunk.code));
 #endif
 
@@ -192,6 +231,7 @@ InterpretResult run() {
         switch (instruction = READ_BYTE()) {
             case OP_RETURN: {
                 Value result = pop_stack();
+                close_upvalues(frame->slots);
                 vm.frameCount--;
                 if (vm.frameCount == 0) {
                     pop_stack();
@@ -328,6 +368,40 @@ InterpretResult run() {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
+
+            case OP_CLOSURE: {
+                ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
+                ObjClosure* closure = new_closure(function);
+                push_to_stack(OBJ_VAL(closure));
+
+                for (int i =0; i < closure->upvalueCount; i++) {
+                    uint8_t isLocal = READ_BYTE();
+                    uint8_t index = READ_BYTE();
+                    closure->upvalues[i] = isLocal ?
+                                capture_upvalue(frame->slots + index)
+                                : frame->closure->upvalues[index];
+                }
+
+                break;
+            }
+
+            case OP_GET_UPVALUE: {
+                uint8_t slot = READ_BYTE();
+                push_to_stack(*frame->closure->upvalues[slot]->location);
+                break;
+            }
+
+            case OP_CLOSE_UPVALUE: {
+                close_upvalues(vm.stackTop - 1);
+                pop_stack();
+                break;
+            }
+
+            case OP_SET_UPVALUE: {
+                uint8_t slot = READ_BYTE();
+                *frame->closure->upvalues[slot]->location = peek(0);
                 break;
             }
 
