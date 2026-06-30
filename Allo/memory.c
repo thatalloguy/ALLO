@@ -67,6 +67,12 @@ static void free_object(Obj* obj) {
             break;
         }
 
+        case OBJ_CLASS: {
+            FREE(ObjClass, obj);
+            break;
+        }
+
+
         case OBJ_UPVALUE: {
             FREE(ObjUpvalue, obj);
             break;
@@ -80,6 +86,13 @@ static void free_object(Obj* obj) {
             ObjString* string = (ObjString*)obj;
             FREE_ARRAY(char, string->chars, string->length + 1);
             FREE(ObjString, obj);
+            break;
+        }
+
+        case OBJ_INSTANCE: {
+            ObjInstance* instance = (ObjInstance*) obj;
+            free_table(&instance->fields);
+            FREE(ObjInstance, obj);
             break;
         }
     }
@@ -164,6 +177,19 @@ static void blacken_object(Obj* object) {
             for (int i=0; i<closure->upvalueCount; i++) {
                 mark_object((Obj*) closure->upvalues[i]);
             }
+            break;
+        }
+
+        case OBJ_CLASS: {
+            ObjClass* klass = (ObjClass*)object;
+            mark_object((Obj*)klass->name);
+            break;
+        }
+
+        case OBJ_INSTANCE: {
+            ObjInstance* instance = (ObjInstance*) object;
+            mark_object((Obj*) instance->klass);
+            mark_table(&instance->fields);
             break;
         }
     }

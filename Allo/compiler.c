@@ -86,6 +86,7 @@ static void statement();
 static void and_(bool canAssign);
 static void or_(bool canAssign);
 static void call(bool canAssign);
+static void dot(bool canAssign);
 
 static ObjFunction* end_compiler();
 static void function(FunctionType type);
@@ -97,7 +98,7 @@ ParseRule rules[] =
   [TOKEN_LEFT_BRACE]    = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RIGHT_BRACE]   = {NULL,     NULL,   PREC_NONE},
   [TOKEN_COMMA]         = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_DOT]           = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_DOT]           = {NULL,     dot,   PREC_CALL},
   [TOKEN_MINUS]         = {unary,    binary, PREC_TERM},
   [TOKEN_PLUS]          = {NULL,     binary, PREC_TERM},
   [TOKEN_SEMICOLON]     = {NULL,     NULL,   PREC_NONE},
@@ -504,6 +505,18 @@ static void function(FunctionType type) {
     }
 }
 
+static void class_declaration() {
+    consume(TOKEN_IDENTIFIER, "Expected class name.");
+    uint8_t nameConstant = identifier_constant(&parser.previous);
+    declare_variable();
+
+    emit_bytes(OP_CLASS, nameConstant);
+    define_variable(nameConstant);
+
+    consume(TOKEN_LEFT_BRACE, "Expected '{' before class body");
+    consume(TOKEN_RIGHT_BRACE, "Expected '}' after class body");
+}
+
 static void fun_declaration() {
     uint8_t global = parse_variable("Expected function name");
     mark_initialized();
@@ -537,8 +550,9 @@ static void synchronize() {
 }
 
 static void declaration() {
-
-    if (match(TOKEN_FUN)) {
+    if (match(TOKEN_CLASS)) {
+        class_declaration();
+    }else if (match(TOKEN_FUN)) {
         fun_declaration();
     } else if (match(TOKEN_VAR)) {
         var_declaration();
@@ -747,6 +761,18 @@ static uint8_t argument_list() {
 static void call(bool canAssign) {
     uint8_t argCount = argument_list();
     emit_bytes(OP_CALL, argCount);
+}
+
+static void dot(bool canAssign) {
+    consume(TOKEN_IDENTIFIER, "Expected property name after '.' ");
+    uint8_t name = identifier_constant(&parser.previous);
+
+    if (canAssign && match(TOKEN_EQUAL)) {
+        expression();
+        emit_bytes(OP_SET_PROPERTY, name);
+    } else {
+        emit_bytes(OP_GET_PROPERTY, name);
+    }
 }
 
 static void literal(bool canAssign) {

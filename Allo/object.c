@@ -52,7 +52,20 @@ static uint32_t hash_string(const char* key, int length) {
     return hash;
 }
 
+ObjInstance* new_instance(ObjClass* klass) {
+    ObjInstance* instance = ALLOCATE_OBJ(ObjInstance, OBJ_INSTANCE);
+    instance->klass = klass;
+    init_table(&instance->fields);
 
+    return instance;
+}
+
+ObjClass* new_class(ObjString* name) {
+    ObjClass* klass = ALLOCATE_OBJ(ObjClass, OBJ_CLASS);
+    klass->name = name;
+
+    return klass;
+}
 
 ObjFunction* new_function() {
     ObjFunction* function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
@@ -151,8 +164,18 @@ void print_object(Value value) {
             break;
         }
 
+        case OBJ_CLASS: {
+            printf("%s", AS_CLASS(value)->name->chars);
+            break;
+        }
+
         case OBJ_STRING: {
             printf("%s", AS_CSTRING(value));
+            break;
+        }
+
+        case OBJ_INSTANCE: {
+            printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
             break;
         }
     }

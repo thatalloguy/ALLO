@@ -124,6 +124,16 @@ int disassemble_instruction(Chunk* chunk, int offset) {
             }
             return offset;
         }
+
+
+        case OP_CLASS:
+            return constant_instruction("OP_CLAS", chunk, offset);
+
+        case OP_GET_PROPERTY:
+            return constant_instruction("OP_GET_PROPERTY", chunk, offset);
+        case OP_SET_PROPERTY:
+            return constant_instruction("OP_SET_PROPERTY", chunk, offset);
+
         default:
             printf("unknown opcode %d\n", instruction);
             return offset + 1;

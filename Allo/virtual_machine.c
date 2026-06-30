@@ -128,6 +128,13 @@ static bool call_value(Value callee, int argCount) {
             case OBJ_CLOSURE: {
                 return call(AS_CLOSURE(callee), argCount);
             }
+
+            case OBJ_CLASS: {
+                ObjClass* klass = AS_CLASS(callee);
+                vm.stackTop[-argCount - 1] = OBJ_VAL(new_instance(klass));
+                return true;
+            }
+
             default:
                 break;
         }
@@ -414,6 +421,49 @@ InterpretResult run() {
                 *frame->closure->upvalues[slot]->location = peek(0);
                 break;
             }
+
+            case OP_CLASS: {
+                push_to_stack(OBJ_VAL(new_class(READ_STRING())));
+                break;
+            }
+
+            case OP_GET_PROPERTY: {
+                if (!IS_INSTANCE(peek(0))) {
+                    runtime_error("Only instances have properties.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjInstance* instance = AS_INSTANCE(peek(0));
+                ObjString* name = READ_STRING();
+
+
+                Value value;
+                if (table_get(&instance->fields, name, &value)) {
+                    pop_stack();
+                    push_to_stack(value);
+                    break;
+                }
+
+                runtime_error("Undefined property '%s' .", name->chars);
+
+                return INTERPRET_RUNTIME_ERROR;
+            }
+
+            case OP_SET_PROPERTY: {
+                if (!IS_INSTANCE(peek(1))) {
+                    runtime_error("Only instances have properties.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjInstance* instance = AS_INSTANCE(peek(1));
+                table_set(&instance->fields, READ_STRING(), peek(0));
+
+                Value value = pop_stack();
+                pop_stack();
+                push_to_stack(value);
+                break;
+            }
+
 
             default:
                 return INTERPRET_COMPILE_ERROR;
