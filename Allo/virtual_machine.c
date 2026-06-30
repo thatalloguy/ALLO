@@ -20,6 +20,14 @@ void init_vm() {
     reset_stack();
     vm.objects = NULL;
     vm.openUpvalues = NULL;
+
+    vm.bytesAllocated = 0;
+    vm.nextGC = 1024 * 1024;
+
+    vm.grayCount = 0;
+    vm.grayCapacity = 0;
+    vm.grayStack = NULL;
+
     init_table(&vm.strings);
     init_table(&vm.globals);
 
@@ -44,8 +52,8 @@ static bool is_falsey(Value value) {
 }
 
 static void concatenate() {
-    ObjString* b = AS_STRING(pop_stack());
-    ObjString* a = AS_STRING(pop_stack());
+    ObjString* b = AS_STRING(peek(0));
+    ObjString* a = AS_STRING(peek(1));
 
     int length = a->length + b->length;
     char* chars = ALLOCATE(char, length + 1);
@@ -54,6 +62,8 @@ static void concatenate() {
     chars[length] = '\0';
 
     ObjString* result = take_string(chars, length);
+    pop_stack();
+    pop_stack();
     push_to_stack(OBJ_VAL(result));
 }
 
@@ -296,11 +306,11 @@ InterpretResult run() {
             case OP_LESS: BINARY_OP(BOOL_VAL, <); break;
             case OP_LESS_EQUAL: BINARY_OP(BOOL_VAL, <=); break;
                 //----
-            case OP_CONSTANT:
+            case OP_CONSTANT: {
                 Value constant = READ_CONSTANT();
                 push_to_stack(constant);
                 break;
-
+            }
                 //---
             case OP_PRINT:
                 print_value(pop_stack());

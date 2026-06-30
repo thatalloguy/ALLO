@@ -2,6 +2,7 @@
 #define allo_memory_h
 
 #include "common.h"
+#include "value.h"
 
 #define GROW_CAPACITY(capacity) \
     ((capacity < 8 ? 8 : (capacity) * 2))
@@ -19,6 +20,9 @@
 #define FREE(type, pointer) reallocate(pointer, sizeof(type), 0)
 
 void* reallocate(void* pointer, size_t oldSize,size_t newSize);
+void mark_object(Obj* object);
+void mark_value(Value value);
+void collect_garbage();
 void free_objects();
 
 

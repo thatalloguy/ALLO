@@ -20,8 +20,12 @@ static Obj* allocate_object(size_t size, ObjType type) {
     object->type = type;
 
     object->next = vm.objects;
-    vm.objects = object;
+    object->isMarked = false;
 
+    vm.objects = object;
+#ifdef ALLO_DEBUG_LOG_GC
+    printf("%p allocated %zu for %d\n", (void*)object, size, type);
+#endif
     return object;
 }
 
@@ -29,10 +33,12 @@ static ObjString* allocate_string(char* chars, int length, uint32_t hash) {
     ObjString* string = ALLOCATE_OBJ(ObjString, OBJ_STRING);
     string->length = length;
     string->chars = chars;
-
-
     string->hash = hash;
+
+    push_to_stack(OBJ_VAL(string));
     table_set(&vm.strings, string, NIL_VAL);
+    pop_stack();
+
     return string;
 }
 
@@ -61,15 +67,13 @@ ObjFunction* new_function() {
 }
 
 ObjClosure* new_closure(ObjFunction* function) {
-    ObjClosure* closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
-    closure->function = function;
-
     ObjUpvalue** upvalues = ALLOCATE(ObjUpvalue*, function->upvalueCount);
-
-    for (int i=0; i<function->upvalueCount; i++) {
+    for (int i = 0; i < function->upvalueCount; i++) {
         upvalues[i] = NULL;
     }
 
+    ObjClosure* closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
+    closure->function = function;
     closure->upvalues = upvalues;
     closure->upvalueCount = function->upvalueCount;
 

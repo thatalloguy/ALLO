@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include "memory.h"
 #include "object.h"
 #include "scanner.h"
 
@@ -837,5 +838,14 @@ void advance_compiler() {
         if (parser.current.type != TOKEN_ERROR) break;
 
         error_at_current(parser.current.start);
+    }
+}
+
+
+void mark_compiler_roots() {
+    Compiler* compiler = current;
+    while (compiler != NULL) {
+        mark_object((Obj*)compiler->function);
+        compiler = compiler->enclosing;
     }
 }

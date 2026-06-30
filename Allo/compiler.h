@@ -6,5 +6,6 @@
 #include "virtual_machine.h"
 
 ObjFunction* compile(const char* source);
+void mark_compiler_roots();
 void advance_compiler();
 #endif
