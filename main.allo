@@ -85,12 +85,17 @@ print(Foo());
 
 
 
+class CoffeeMaker {
+    init(coffee) {
+        this.coffee = coffee;
+    }
 
+    brew() {
+        print "Enjoy your cup of " + this.coffee;
+        this.coffee = nil;
+    }
+}
 
-
-class Pair {}
-
-var pair = Pair();
-pair.first = 1;
-pair.second = 2;
-print pair.first + pair.second;
+var maker = CoffeeMaker("coffee and chicory");
+print(maker);
+maker.brew();

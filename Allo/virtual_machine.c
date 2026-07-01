@@ -28,8 +28,11 @@ void init_vm() {
     vm.grayCapacity = 0;
     vm.grayStack = NULL;
 
+    vm.initString = NULL;
+
     init_table(&vm.strings);
     init_table(&vm.globals);
+    vm.initString = copy_string("init", 4);
 
     define_native("clock", clockNative);
 }
@@ -37,6 +40,8 @@ void init_vm() {
 void free_vm() {
     free_table(&vm.strings);
     free_table(&vm.globals);
+
+    vm.initString = NULL;
     free_objects();
 }
 
@@ -132,7 +137,21 @@ static bool call_value(Value callee, int argCount) {
             case OBJ_CLASS: {
                 ObjClass* klass = AS_CLASS(callee);
                 vm.stackTop[-argCount - 1] = OBJ_VAL(new_instance(klass));
+                Value initializer;
+                if (table_get(&klass->methods, vm.initString, &initializer)) {
+                    return call(AS_CLOSURE(initializer), argCount);
+                } else if (argCount != 0) {
+                    runtime_error("Expected 0 arguments but got %d.", argCount);
+                    return false;
+                }
+
                 return true;
+            }
+
+            case OBJ_BOUND_METHOD: {
+                ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
+                vm.stackTop[-argCount - 1] = bound->receiver;
+                return call(bound->method, argCount);
             }
 
             default:
@@ -143,6 +162,21 @@ static bool call_value(Value callee, int argCount) {
     runtime_error("Can only call functions and classes");
 
     return false;
+}
+
+static bool bind_method(ObjClass* klass, ObjString* name) {
+    Value method;
+    if (!table_get(&klass->methods, name, &method)) {
+        runtime_error("Undefined Property '%s'. ", name->chars);
+        return false;
+    }
+
+    ObjBoundMethod* bound = new_bound_method(peek(0), AS_CLOSURE(method));
+
+    pop_stack();
+    push_to_stack(OBJ_VAL(bound));
+
+    return true;
 }
 
 static ObjUpvalue* capture_upvalue(Value* local) {
@@ -177,6 +211,13 @@ static void close_upvalues(Value* last) {
         upvalue->location = &upvalue->closed;
         vm.openUpvalues = upvalue->next;
     }
+}
+
+static void define_method(ObjString* name) {
+    Value method = peek(0);
+    ObjClass* klass = AS_CLASS(peek(1));
+    table_set(&klass->methods, name, method);
+    pop_stack();
 }
 
 void define_native(const char* name, NativeFn function) {
@@ -444,9 +485,11 @@ InterpretResult run() {
                     break;
                 }
 
-                runtime_error("Undefined property '%s' .", name->chars);
+                if (!bind_method(instance->klass, name)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
 
-                return INTERPRET_RUNTIME_ERROR;
+                break;
             }
 
             case OP_SET_PROPERTY: {
@@ -463,7 +506,10 @@ InterpretResult run() {
                 push_to_stack(value);
                 break;
             }
-
+            case OP_METHOD: {
+                define_method(READ_STRING());
+                break;
+            }
 
             default:
                 return INTERPRET_COMPILE_ERROR;

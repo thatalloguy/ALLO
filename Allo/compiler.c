@@ -53,7 +53,9 @@ typedef struct {
 
 typedef enum {
     TYPE_FUNCTION,
-    TYPE_SCRIPT
+    TYPE_SCRIPT,
+    TYPE_METHOD,
+    TYPE_INITIALIZER,
 } FunctionType;
 
 typedef struct Compiler {
@@ -70,6 +72,10 @@ typedef struct Compiler {
     int scopeDepth;
 } Compiler;
 
+typedef struct ClassCompiler {
+    struct ClassCompiler* enclosing;
+} ClassCompiler;
+
 
 static void grouping(bool canAssign);
 static void unary(bool canAssign);
@@ -85,8 +91,11 @@ static void statement();
 
 static void and_(bool canAssign);
 static void or_(bool canAssign);
+static void this_(bool canAssign);
 static void call(bool canAssign);
 static void dot(bool canAssign);
+
+static void named_variable(Token name, bool canAssign);
 
 static ObjFunction* end_compiler();
 static void function(FunctionType type);
@@ -127,7 +136,7 @@ ParseRule rules[] =
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
   [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_THIS]          = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_THIS]          = {this_,     NULL,   PREC_NONE},
   [TOKEN_TRUE]          = {literal,     NULL,   PREC_NONE},
   [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
   [TOKEN_WHILE]         = {NULL,     NULL,   PREC_NONE},
@@ -138,6 +147,7 @@ ParseRule rules[] =
 Parser parser;
 Chunk* compilingChunk;
 Compiler* current = NULL;
+ClassCompiler* currentClass = NULL;
 
 static void init_compiler(Compiler* compiler, FunctionType type) {
     compiler->enclosing = current;
@@ -157,8 +167,13 @@ static void init_compiler(Compiler* compiler, FunctionType type) {
     Local* local = &current->locals[current->localCount++];
     local->depth = 0;
     local->isCaptured = false;
-    local->name.start = "";
-    local->name.length = 0;
+    if (type != TYPE_FUNCTION) {
+        local->name.start = "this";
+        local->name.length = 4;
+    } else {
+        local->name.start = "";
+        local->name.length = 0;
+    }
 }
 
 static Chunk* current_chunk() {
@@ -214,16 +229,21 @@ static void consume(TokenType type, const char* message) {
 static void emit_byte(uint8_t byte) {
     write_chunk(current_chunk(), byte, parser.previous.line);
 }
-
-static void emit_return() {
-    emit_byte(OP_NIL);
-    emit_byte(OP_RETURN);
-}
 static void emit_bytes(uint8_t byte1, uint8_t byte2) {
     emit_byte(byte1);
     emit_byte(byte2);
 }
 
+
+static void emit_return() {
+    if (current->type == TYPE_INITIALIZER) {
+        emit_bytes(OP_GET_LOCAL, 0);
+    } else {
+        emit_byte(OP_NIL);
+    }
+
+    emit_byte(OP_RETURN);
+}
 static void emit_loop(int loopStart) {
     emit_byte(OP_LOOP);
 
@@ -505,16 +525,46 @@ static void function(FunctionType type) {
     }
 }
 
+static void method() {
+    consume(TOKEN_IDENTIFIER, "Expected method name.");
+    uint8_t constant = identifier_constant(&parser.previous);
+
+    FunctionType type = TYPE_METHOD;
+
+    if (parser.previous.length == 4 && memcmp(parser.previous.start, "init", 4) == 0) {
+        type = TYPE_INITIALIZER;
+     }
+
+    function(type);
+
+    emit_bytes(OP_METHOD, constant);
+}
+
 static void class_declaration() {
     consume(TOKEN_IDENTIFIER, "Expected class name.");
+    Token className = parser.previous;
     uint8_t nameConstant = identifier_constant(&parser.previous);
     declare_variable();
 
     emit_bytes(OP_CLASS, nameConstant);
     define_variable(nameConstant);
 
+    ClassCompiler classCompiler;
+    classCompiler.enclosing = currentClass;
+    currentClass = &classCompiler;
+
+
+    named_variable(className, false);
     consume(TOKEN_LEFT_BRACE, "Expected '{' before class body");
+
+    while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+        method();
+    }
+
     consume(TOKEN_RIGHT_BRACE, "Expected '}' after class body");
+    emit_byte(OP_POP);
+
+    currentClass = currentClass->enclosing;
 }
 
 static void fun_declaration() {
@@ -655,6 +705,11 @@ static void return_statement() {
     if (match(TOKEN_SEMICOLON)) {
         emit_return();
     } else {
+
+        if (current->type == TYPE_INITIALIZER) {
+            error("Can't return a value from an initializer.");
+        }
+
         expression();
         consume(TOKEN_SEMICOLON, "Expect ';' after return value.");
         emit_byte(OP_RETURN);
@@ -699,6 +754,14 @@ static void or_(bool canAssign) {
     patch_jump(end_jump);
 }
 
+static void this_(bool canAssign) {
+    if (currentClass == NULL) {
+        error("Can't use 'this' outside of a class.");
+        return;
+    }
+
+    variable(false);
+}
 
 static void grouping(bool canAssign) {
     expression();
@@ -820,7 +883,8 @@ static void variable( bool canAssign) {
 
 
 static ObjFunction* end_compiler() {
-    emit_byte(OP_RETURN);
+    // emit_byte(OP_RETURN);
+    emit_return();
 
     ObjFunction* function = current->function;
 
