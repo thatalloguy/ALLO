@@ -142,6 +142,9 @@ void skip_white_space() {
                 if (peek_next() == '/') {
                     while (peek() != '\n' && !is_at_end()) advance();
                 } else return;
+                break;
+
+
             default:
                 return;
         }

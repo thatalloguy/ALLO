@@ -74,6 +74,7 @@ typedef struct Compiler {
 
 typedef struct ClassCompiler {
     struct ClassCompiler* enclosing;
+    bool hasSuperClass;
 } ClassCompiler;
 
 
@@ -92,6 +93,7 @@ static void statement();
 static void and_(bool canAssign);
 static void or_(bool canAssign);
 static void this_(bool canAssign);
+static void super_(bool canAssign);
 static void call(bool canAssign);
 static void dot(bool canAssign);
 
@@ -135,7 +137,7 @@ ParseRule rules[] =
   [TOKEN_OR]            = {NULL,     or_,   PREC_OR},
   [TOKEN_PRINT]         = {NULL,     NULL,   PREC_NONE},
   [TOKEN_RETURN]        = {NULL,     NULL,   PREC_NONE},
-  [TOKEN_SUPER]         = {NULL,     NULL,   PREC_NONE},
+  [TOKEN_SUPER]         = {super_,     NULL,   PREC_NONE},
   [TOKEN_THIS]          = {this_,     NULL,   PREC_NONE},
   [TOKEN_TRUE]          = {literal,     NULL,   PREC_NONE},
   [TOKEN_VAR]           = {NULL,     NULL,   PREC_NONE},
@@ -486,6 +488,14 @@ static void end_scope() {
 
 }
 
+static Token synthetic_token(const char* text) {
+    Token token;
+    token.start = text;
+    token.length = (int)strlen(text);
+
+    return token;
+}
+
 static void block() {
     while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
         declaration();
@@ -551,8 +561,27 @@ static void class_declaration() {
 
     ClassCompiler classCompiler;
     classCompiler.enclosing = currentClass;
+    classCompiler.hasSuperClass = false;
+
     currentClass = &classCompiler;
 
+    if (match(TOKEN_LESS)) {
+        consume(TOKEN_IDENTIFIER, "Expected superclass name.");
+        variable(false);
+
+        if (identifiers_equal(&className, &parser.previous)) {
+            error("A class can not inherit from itself, idiot.");
+        }
+
+        begin_scope();
+        add_local(synthetic_token("super"));
+        define_variable(0);
+
+
+        named_variable(className, false);
+        emit_byte(OP_INHERIT);
+        classCompiler.hasSuperClass = true;
+    }
 
     named_variable(className, false);
     consume(TOKEN_LEFT_BRACE, "Expected '{' before class body");
@@ -564,6 +593,9 @@ static void class_declaration() {
     consume(TOKEN_RIGHT_BRACE, "Expected '}' after class body");
     emit_byte(OP_POP);
 
+    if (classCompiler.hasSuperClass) {
+        end_scope();
+    }
     currentClass = currentClass->enclosing;
 }
 
@@ -763,6 +795,52 @@ static void this_(bool canAssign) {
     variable(false);
 }
 
+static uint8_t argument_list() {
+    uint8_t argCount = 0;
+
+    if (!check(TOKEN_RIGHT_PAREN)) {
+        do {
+            expression();
+
+            if (argCount == 255) {
+                error("Can't have more than 255 arguments.");
+            }
+
+            argCount++;
+        } while (match(TOKEN_COMMA));
+    }
+
+    consume(TOKEN_RIGHT_PAREN, "Excepted ')' after arguments");
+
+    return argCount;
+}
+
+
+static void super_(bool canAssign) {
+    if (currentClass == NULL) {
+        error("Can't use 'super' outside of a class.");
+    } else if (!currentClass->hasSuperClass) {
+        error("Can't use 'super' in a class with no superclass.");
+    }
+
+    consume(TOKEN_DOT, "Expected '.' after 'super'. ");
+    consume(TOKEN_IDENTIFIER, "Expected superclass method name");
+
+    uint8_t name = identifier_constant(&parser.previous);
+
+    named_variable(synthetic_token("this"), false);
+
+    if (match(TOKEN_LEFT_PAREN)) {
+        uint8_t argCount = argument_list();
+        named_variable(synthetic_token("super"), false);
+        emit_bytes(OP_SUPER_INVOKE, name);
+        emit_byte(argCount);
+    } else {
+        named_variable(synthetic_token("super"), false);
+        emit_bytes(OP_GET_SUPER, name);
+    }
+}
+
 static void grouping(bool canAssign) {
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression");
@@ -801,25 +879,6 @@ static void binary(bool canAssign) {
     }
 }
 
-static uint8_t argument_list() {
-    uint8_t argCount = 0;
-
-    if (!check(TOKEN_RIGHT_PAREN)) {
-        do {
-            expression();
-
-            if (argCount == 255) {
-                error("Can't have more than 255 arguments.");
-            }
-
-            argCount++;
-        } while (match(TOKEN_COMMA));
-    }
-
-    consume(TOKEN_RIGHT_PAREN, "Excepted ')' after arguments");
-
-    return argCount;
-}
 
 static void call(bool canAssign) {
     uint8_t argCount = argument_list();

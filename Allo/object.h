@@ -8,7 +8,7 @@
 
 #define OBJ_TYPE(value)         (AS_OBJ(value)->type)
 
-#define IS_class(value)        is_obj_type(value, OBJ_CLASS)
+#define IS_CLASS(value)        is_obj_type(value, OBJ_CLASS)
 #define IS_STRING(value)        is_obj_type(value, OBJ_STRING)
 #define IS_FUNCTION(value)     is_obj_type(value, OBJ_FUNCTION)
 #define IS_INSTANCE(value)      is_obj_type(value, OBJ_INSTANCE)

@@ -126,6 +126,7 @@ static bool call_value(Value callee, int argCount) {
             case OBJ_NATIVE: {
                 NativeFn native = AS_NATIVE(callee);
                 Value result = native(argCount, vm.stackTop - argCount);
+                vm.stackTop -= argCount + 1;
                 push_to_stack(result);
 
                 return true;
@@ -551,6 +552,43 @@ InterpretResult run() {
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
+
+            case OP_SUPER_INVOKE: {
+                ObjString* method = READ_STRING();
+                int argCount = READ_BYTE();
+                ObjClass* superclass = AS_CLASS(pop_stack());
+                if (!invoke_from_class(superclass, method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
+
+            case OP_INHERIT: {
+                Value superclass = peek(1);
+
+                if (!IS_CLASS(superclass)) {
+                    runtime_error("Superclass must be a class, IDIOT.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
+                ObjClass* subclass = AS_CLASS(peek(0));
+                table_add_all(&AS_CLASS(superclass)->methods, &subclass->methods);
+
+                pop_stack();
+                break;
+            }
+
+            case OP_GET_SUPER: {
+                ObjString* name = READ_STRING();
+                ObjClass* superclass = AS_CLASS(pop_stack());
+
+                if (!bind_method(superclass, name)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+
                 break;
             }
 

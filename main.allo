@@ -78,13 +78,6 @@ main();
 globalSet();
 globalGet();
 
-class Foo{}
-print(Foo);
-
-print(Foo());
-
-
-
 class CoffeeMaker {
     init(coffee) {
         this.coffee = coffee;
@@ -99,3 +92,29 @@ class CoffeeMaker {
 var maker = CoffeeMaker("coffee and chicory");
 print(maker);
 maker.brew();
+
+
+class Doughnut {
+  finish(ingredient) {
+    print "Finish with " + ingredient;
+  }
+
+  cook() {
+    print "Dunk in the fryer.";
+    this.finish("sprinkles");
+  }
+
+
+}
+
+class Cruller < Doughnut {
+  finish(ingredient) {
+    super.finish("icing");
+  }
+}
+
+var crull = Cruller();
+
+crull.cook();
+
+crull.finish("appel");
